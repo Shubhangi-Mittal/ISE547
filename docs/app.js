@@ -406,11 +406,11 @@ function buildDonutChartUri(items, title) {
   return svgDataUri(svg);
 }
 
-function buildEdaFallback(rows) {
+function buildEdaReport(rows) {
   const summary = summarizeRows(rows);
   const missing = missingSummary(rows);
   const warnings = summary.schema?.target
-    ? ["Browser-side EDA is active for faster profiling on the public site."]
+    ? ["EDA completed successfully for the uploaded dataset."]
     : ["No clean target column was detected, so outcome-based EDA is limited."];
   const suggestedQuestions = [];
   if (summary.schema?.customer) suggestedQuestions.push(`Which ${summary.schema.customer} groups should we prioritize?`);
@@ -447,6 +447,25 @@ function buildEdaFallback(rows) {
       title: `Share of top ${summary.channelItems.length ? (summary.schema.channel || "channel") : (summary.schema.customer || "segment")} groups`,
       caption: "Summarizes the dominant business mix in the uploaded dataset.",
       chart_url: buildDonutChartUri(mixItems, "Share of top groups")
+    });
+  }
+  if (chartManifest.length < 3) {
+    const comparisonItems = (summary.customerItems.length ? summary.customerItems : summary.channelItems).slice(0, 6);
+    if (comparisonItems.length) {
+      chartManifest.push({
+        key: "group_comparison",
+        title: `Performance across top ${summary.customerItems.length ? (summary.schema.customer || "segment") : (summary.schema.channel || "channel")} groups`,
+        caption: "Compares the strongest detected business groups in the uploaded dataset.",
+        chart_url: buildBarChartUri(comparisonItems, "Performance across top groups", "#1E5F74")
+      });
+    }
+  }
+  if (chartManifest.length < 3 && summary.bucketItems.length) {
+    chartManifest.push({
+      key: "bucket_performance",
+      title: `Performance by ${summary.bucketColumn || "engagement"} bucket`,
+      caption: "Shows how the strongest numeric metric changes across buckets.",
+      chart_url: buildBarChartUri(summary.bucketItems, `Performance by ${summary.bucketColumn || "metric"} bucket`, "#7FC8A9")
     });
   }
   return {
@@ -493,7 +512,7 @@ function buildEdaFallback(rows) {
       recommended_questions: suggestedQuestions
     },
     retrieval_chunks: [
-      `Browser-side EDA profile: rows=${summary.rows}, columns=${summary.columns}.`,
+      `EDA profile: rows=${summary.rows}, columns=${summary.columns}.`,
       `Detected schema: target=${summary.schema?.target || "none"}, customer=${summary.schema?.customer || "none"}, channel=${summary.schema?.channel || "none"}, time=${summary.schema?.time || "none"}.`
     ],
     key_findings: [
@@ -917,7 +936,7 @@ async function renderAnalystPage(rows) {
 }
 
 async function renderEdaPage(rows) {
-  const report = buildEdaFallback(rows);
+  const report = buildEdaReport(rows);
 
   const profile = report.profile || {};
   const quality = report.quality_checks || {};
@@ -936,7 +955,7 @@ async function renderEdaPage(rows) {
       <div class="hero-card eda-hero fade-in">
         <div class="eyebrow-pill">EDA Agent</div>
         <div class="section-title" style="margin-top:12px;">Visual dataset intelligence before analyst reasoning</div>
-        <p class="section-subtitle">Deterministic profiling runs in the browser before the analyst agent so the workflow stays responsive while still surfacing schema, warnings, and business context from the uploaded dataset.</p>
+        <p class="section-subtitle">Deterministic profiling runs before the analyst agent so the workflow stays responsive while still surfacing schema, warnings, and business context from the uploaded dataset.</p>
         <div class="eda-chip-row">
           <span class="eda-chip">Target: ${schema.target || "Not detected"}</span>
           <span class="eda-chip">Time: ${schema.time || "Not detected"}</span>
@@ -981,10 +1000,10 @@ async function renderEdaPage(rows) {
               <div class="eda-chart-caption">${chart.caption}</div>
             </div>
             <div class="eda-chart-frame">
-              ${chart.chart_url ? `<img src="${chart.chart_url}" alt="${chart.title}" loading="lazy" />` : "<p class='muted small'>Backend chart unavailable in fallback mode.</p>"}
+              ${chart.chart_url ? `<img src="${chart.chart_url}" alt="${chart.title}" loading="lazy" />` : "<p class='muted small'>Chart unavailable for this dataset.</p>"}
             </div>
           </div>
-        `).join("") : "<p class='muted'>Lightweight browser-side EDA is active on the public site, so this page focuses on schema, quality checks, and analyst handoff without sending extra profiling jobs to the backend.</p>"}
+        `).join("") : "<p class='muted'>Charts are unavailable for this dataset, but the profile, quality checks, and analyst handoff are still ready.</p>"}
       </div>
     </div>
 
