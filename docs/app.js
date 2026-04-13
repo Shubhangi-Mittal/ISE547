@@ -265,13 +265,6 @@ function summarizeRows(rows) {
 }
 
 async function getSummary(rows) {
-  if (hasBackend() && getStoredCsv()) {
-    try {
-      return await fetchApi("/api/summary", { method: "POST", body: makeFormData() });
-    } catch (error) {
-      console.warn("Backend summary failed, falling back to browser mode.", error);
-    }
-  }
   const summary = summarizeRows(rows);
   return {
     dataset_name: getDatasetName(),
@@ -674,7 +667,6 @@ async function renderAnalystPage(rows) {
   }
 
   document.getElementById("runAnalystButton").addEventListener("click", run);
-  run();
 }
 
 /* ── Evaluation page ── */
