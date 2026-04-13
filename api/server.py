@@ -11,6 +11,7 @@ import pandas as pd
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
+from starlette.concurrency import run_in_threadpool
 
 from agents.analyst_agent import AnalystRAGAgent
 from agents.presentation_agent import PresentationGeneratorAgent
@@ -65,9 +66,9 @@ def health() -> dict[str, str]:
 @app.post("/api/summary")
 async def summarize_dataset(file: UploadFile = File(...)) -> dict:
     upload_path = _save_upload(file)
-    dataset = _validate_csv(upload_path)
+    dataset = await run_in_threadpool(_validate_csv, upload_path)
     presenter = PresentationGeneratorAgent(output_dir=OUTPUT_DIR)
-    summary = presenter.summarize_dataset(upload_path)
+    summary = await run_in_threadpool(presenter.summarize_dataset, upload_path)
     return {
         "dataset_name": file.filename,
         "rows": summary["rows"],
@@ -94,14 +95,15 @@ async def analyst_answer(
     top_k: int = Form(5),
 ) -> dict:
     upload_path = _save_upload(file)
-    _validate_csv(upload_path)
+    await run_in_threadpool(_validate_csv, upload_path)
     agent = AnalystRAGAgent(dataset_path=upload_path)
-    result = agent.answer_question(
-        question=question,
-        model=model,
-        prompt_style=prompt_style,
-        rag_enabled=rag_enabled,
-        top_k=top_k,
+    result = await run_in_threadpool(
+        agent.answer_question,
+        question,
+        model,
+        prompt_style,
+        rag_enabled,
+        top_k,
     )
     return {
         "question": result.question,
@@ -117,11 +119,11 @@ async def analyst_answer(
 @app.post("/api/presentation")
 async def generate_presentation(file: UploadFile = File(...)) -> dict:
     upload_path = _save_upload(file)
-    _validate_csv(upload_path)
+    await run_in_threadpool(_validate_csv, upload_path)
     presenter = PresentationGeneratorAgent(output_dir=OUTPUT_DIR)
     output_filename = f"{uuid.uuid4().hex}_presentation.pptx"
     output_path = API_PRESENTATION_DIR / output_filename
-    ppt_path, slides, chart_paths = presenter.create_presentation(upload_path, output_path)
+    ppt_path, slides, chart_paths = await run_in_threadpool(presenter.create_presentation, upload_path, output_path)
     return {
         "download_url": f"/api/downloads/{ppt_path.name}",
         "slides": [

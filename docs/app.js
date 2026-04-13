@@ -13,7 +13,7 @@ const STORAGE_KEYS = {
 };
 
 const API_BASE_URL = (window.APP_CONFIG?.API_BASE_URL || "").replace(/\/$/, "");
-const MAX_ANALYSIS_ROWS = 25000;
+const MAX_ANALYSIS_ROWS = 10000;
 
 function hasBackend() {
   return Boolean(API_BASE_URL);
