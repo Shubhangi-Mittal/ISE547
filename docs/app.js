@@ -276,18 +276,179 @@ function missingSummary(rows) {
     .slice(0, 12);
 }
 
+function svgDataUri(svg) {
+  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+}
+
+function escapeSvg(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function buildBarChartUri(items, title, color = "#1E5F74", suffix = "") {
+  const width = 520;
+  const height = 260;
+  const left = 48;
+  const right = 16;
+  const top = 24;
+  const bottom = 54;
+  const plotWidth = width - left - right;
+  const plotHeight = height - top - bottom;
+  const safeItems = items.slice(0, 6);
+  const maxValue = Math.max(...safeItems.map((item) => Number(item.value) || 0), 1);
+  const barWidth = Math.max(26, Math.min(60, plotWidth / Math.max(safeItems.length * 1.5, 1)));
+  const gap = safeItems.length > 1 ? (plotWidth - (barWidth * safeItems.length)) / (safeItems.length - 1) : 0;
+  const bars = safeItems.map((item, index) => {
+    const value = Number(item.value) || 0;
+    const barHeight = (value / maxValue) * plotHeight;
+    const x = left + index * (barWidth + gap);
+    const y = top + plotHeight - barHeight;
+    return `
+      <rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${barWidth.toFixed(1)}" height="${barHeight.toFixed(1)}" rx="8" fill="${color}" />
+      <text x="${(x + barWidth / 2).toFixed(1)}" y="${height - 18}" text-anchor="middle" font-size="11" fill="#496270">${escapeSvg(item.key).slice(0, 12)}</text>
+      <text x="${(x + barWidth / 2).toFixed(1)}" y="${Math.max(y - 8, 18).toFixed(1)}" text-anchor="middle" font-size="11" fill="#17313C">${value.toFixed(2)}${suffix}</text>
+    `;
+  }).join("");
+  const svg = `
+    <svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
+      <rect width="${width}" height="${height}" rx="18" fill="#F8FBFC" />
+      <text x="${left}" y="18" font-size="15" font-weight="700" fill="#17313C">${escapeSvg(title)}</text>
+      <line x1="${left}" y1="${top + plotHeight}" x2="${width - right}" y2="${top + plotHeight}" stroke="#D7E4EA" stroke-width="1.2" />
+      ${bars}
+    </svg>
+  `;
+  return svgDataUri(svg);
+}
+
+function buildAreaChartUri(items, title, suffix = "") {
+  const width = 520;
+  const height = 260;
+  const left = 44;
+  const right = 18;
+  const top = 28;
+  const bottom = 52;
+  const plotWidth = width - left - right;
+  const plotHeight = height - top - bottom;
+  const safeItems = items.slice(0, 8);
+  const maxValue = Math.max(...safeItems.map((item) => Number(item.value) || 0), 1);
+  const step = safeItems.length > 1 ? plotWidth / (safeItems.length - 1) : plotWidth;
+  const points = safeItems.map((item, index) => {
+    const value = Number(item.value) || 0;
+    const x = left + index * step;
+    const y = top + plotHeight - (value / maxValue) * plotHeight;
+    return { x, y, label: item.key, value };
+  });
+  const path = points.map((point, index) => `${index === 0 ? "M" : "L"} ${point.x.toFixed(1)} ${point.y.toFixed(1)}`).join(" ");
+  const area = `${path} L ${(left + plotWidth).toFixed(1)} ${(top + plotHeight).toFixed(1)} L ${left} ${(top + plotHeight).toFixed(1)} Z`;
+  const labels = points.map((point) => `
+    <circle cx="${point.x.toFixed(1)}" cy="${point.y.toFixed(1)}" r="3.5" fill="#1E5F74" />
+    <text x="${point.x.toFixed(1)}" y="${height - 18}" text-anchor="middle" font-size="11" fill="#496270">${escapeSvg(point.label).slice(0, 12)}</text>
+  `).join("");
+  const svg = `
+    <svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
+      <rect width="${width}" height="${height}" rx="18" fill="#F8FBFC" />
+      <text x="${left}" y="18" font-size="15" font-weight="700" fill="#17313C">${escapeSvg(title)}</text>
+      <line x1="${left}" y1="${top + plotHeight}" x2="${width - right}" y2="${top + plotHeight}" stroke="#D7E4EA" stroke-width="1.2" />
+      <path d="${area}" fill="#9ED8DB" opacity="0.75" />
+      <path d="${path}" fill="none" stroke="#1E5F74" stroke-width="2.5" />
+      ${labels}
+      <text x="${width - right}" y="${top + 8}" text-anchor="end" font-size="11" fill="#17313C">${maxValue.toFixed(2)}${suffix}</text>
+    </svg>
+  `;
+  return svgDataUri(svg);
+}
+
+function buildDonutChartUri(items, title) {
+  const width = 520;
+  const height = 260;
+  const cx = 138;
+  const cy = 138;
+  const outer = 72;
+  const inner = 42;
+  const colors = ["#1E5F74", "#4F8FBF", "#7FC8A9", "#FFC857", "#F29E4C"];
+  const safeItems = items.slice(0, 5);
+  const total = safeItems.reduce((sum, item) => sum + Math.max(Number(item.value) || 0, 0), 0) || 1;
+  let start = -Math.PI / 2;
+  const arcs = safeItems.map((item, index) => {
+    const value = Math.max(Number(item.value) || 0, 0);
+    const sweep = (value / total) * Math.PI * 2;
+    const end = start + sweep;
+    const largeArc = sweep > Math.PI ? 1 : 0;
+    const x1 = cx + outer * Math.cos(start);
+    const y1 = cy + outer * Math.sin(start);
+    const x2 = cx + outer * Math.cos(end);
+    const y2 = cy + outer * Math.sin(end);
+    const x3 = cx + inner * Math.cos(end);
+    const y3 = cy + inner * Math.sin(end);
+    const x4 = cx + inner * Math.cos(start);
+    const y4 = cy + inner * Math.sin(start);
+    const d = `M ${x1.toFixed(2)} ${y1.toFixed(2)} A ${outer} ${outer} 0 ${largeArc} 1 ${x2.toFixed(2)} ${y2.toFixed(2)} L ${x3.toFixed(2)} ${y3.toFixed(2)} A ${inner} ${inner} 0 ${largeArc} 0 ${x4.toFixed(2)} ${y4.toFixed(2)} Z`;
+    start = end;
+    return `<path d="${d}" fill="${colors[index % colors.length]}" />`;
+  }).join("");
+  const legend = safeItems.map((item, index) => `
+    <rect x="282" y="${58 + index * 28}" width="12" height="12" rx="3" fill="${colors[index % colors.length]}" />
+    <text x="302" y="${68 + index * 28}" font-size="12" fill="#17313C">${escapeSvg(item.key).slice(0, 22)}</text>
+  `).join("");
+  const svg = `
+    <svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
+      <rect width="${width}" height="${height}" rx="18" fill="#F8FBFC" />
+      <text x="28" y="24" font-size="15" font-weight="700" fill="#17313C">${escapeSvg(title)}</text>
+      ${arcs}
+      <text x="${cx}" y="${cy - 4}" text-anchor="middle" font-size="13" font-weight="700" fill="#17313C">Top Mix</text>
+      <text x="${cx}" y="${cy + 16}" text-anchor="middle" font-size="11" fill="#496270">${safeItems.length} groups</text>
+      ${legend}
+    </svg>
+  `;
+  return svgDataUri(svg);
+}
+
 function buildEdaFallback(rows) {
   const summary = summarizeRows(rows);
   const missing = missingSummary(rows);
   const warnings = summary.schema?.target
-    ? ["Browser fallback mode is active, so advanced backend EDA diagnostics are limited."]
-    : ["No clean target column was detected in browser fallback mode."];
+    ? ["Browser-side EDA is active for faster profiling on the public site."]
+    : ["No clean target column was detected, so outcome-based EDA is limited."];
   const suggestedQuestions = [];
   if (summary.schema?.customer) suggestedQuestions.push(`Which ${summary.schema.customer} groups should we prioritize?`);
   if (summary.schema?.channel) suggestedQuestions.push(`Which ${summary.schema.channel} groups appear strongest?`);
   if (summary.schema?.time) suggestedQuestions.push(`How does performance change across ${summary.schema.time}?`);
   if (summary.schema?.engagement) suggestedQuestions.push(`How does ${summary.schema.engagement} relate to the detected outcome?`);
   if (!suggestedQuestions.length) suggestedQuestions.push("Which dimensions in this dataset appear most commercially meaningful?");
+  const mixItems = (summary.channelItems.length ? summary.channelItems : summary.customerItems).slice(0, 5);
+  const chartManifest = [];
+  if (missing.length) {
+    chartManifest.push({
+      key: "missingness",
+      title: "Missing values by column",
+      caption: "Highlights the fields with the highest share of missing values.",
+      chart_url: buildBarChartUri(
+        missing.slice(0, 6).map((row) => ({ key: row.column, value: row.missing_pct })),
+        "Missing values by column",
+        "#4F8FBF",
+        "%"
+      )
+    });
+  }
+  if (summary.timeItems.length) {
+    chartManifest.push({
+      key: "time_area",
+      title: "Trend across time",
+      caption: "Shows how the strongest detected business signal changes over the time dimension.",
+      chart_url: buildAreaChartUri(summary.timeItems, "Trend across time", summary.targetRate !== null ? "" : "")
+    });
+  }
+  if (mixItems.length) {
+    chartManifest.push({
+      key: "mix_doughnut",
+      title: `Share of top ${summary.channelItems.length ? (summary.schema.channel || "channel") : (summary.schema.customer || "segment")} groups`,
+      caption: "Summarizes the dominant business mix in the uploaded dataset.",
+      chart_url: buildDonutChartUri(mixItems, "Share of top groups")
+    });
+  }
   return {
     profile: {
       source_format: "tabular",
@@ -312,7 +473,7 @@ function buildEdaFallback(rows) {
       numeric_outliers: [],
       warnings
     },
-    chart_manifest: [],
+    chart_manifest: chartManifest,
     suggested_questions: suggestedQuestions,
     handoff_summary: {
       dataset_type: "tabular",
@@ -332,7 +493,7 @@ function buildEdaFallback(rows) {
       recommended_questions: suggestedQuestions
     },
     retrieval_chunks: [
-      `Browser fallback EDA profile: rows=${summary.rows}, columns=${summary.columns}.`,
+      `Browser-side EDA profile: rows=${summary.rows}, columns=${summary.columns}.`,
       `Detected schema: target=${summary.schema?.target || "none"}, customer=${summary.schema?.customer || "none"}, channel=${summary.schema?.channel || "none"}, time=${summary.schema?.time || "none"}.`
     ],
     key_findings: [
