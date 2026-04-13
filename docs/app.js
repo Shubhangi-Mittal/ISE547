@@ -13,7 +13,7 @@ const STORAGE_KEYS = {
 };
 
 const API_BASE_URL = (window.APP_CONFIG?.API_BASE_URL || "").replace(/\/$/, "");
-const MAX_ANALYSIS_ROWS = 10000;
+const MAX_ANALYSIS_ROWS = 25000;
 
 function hasBackend() {
   return Boolean(API_BASE_URL);
@@ -344,6 +344,13 @@ function buildEdaFallback(rows) {
 }
 
 async function getSummary(rows) {
+  if (hasBackend() && getStoredCsv()) {
+    try {
+      return await fetchApi("/api/summary", { method: "POST", body: makeFormData() });
+    } catch (error) {
+      console.warn("Backend summary failed, falling back to browser mode.", error);
+    }
+  }
   const summary = summarizeRows(rows);
   return {
     dataset_name: getDatasetName(),
@@ -756,7 +763,19 @@ async function renderAnalystPage(rows) {
 }
 
 async function renderEdaPage(rows) {
-  const report = buildEdaFallback(rows);
+  let report;
+  if (hasBackend() && getStoredCsv()) {
+    try {
+      report = await fetchApi("/api/eda", { method: "POST", body: makeFormData() });
+      report.chart_manifest = (report.chart_manifest || []).map((chart) => ({
+        ...chart,
+        chart_url: chart.chart_url ? `${API_BASE_URL}${chart.chart_url}` : null
+      }));
+    } catch (error) {
+      console.warn("Backend EDA call failed, falling back to browser mode.", error);
+    }
+  }
+  if (!report) report = buildEdaFallback(rows);
 
   const profile = report.profile || {};
   const quality = report.quality_checks || {};
@@ -775,7 +794,7 @@ async function renderEdaPage(rows) {
       <div class="hero-card eda-hero fade-in">
         <div class="eyebrow-pill">EDA Agent</div>
         <div class="section-title" style="margin-top:12px;">Visual dataset intelligence before analyst reasoning</div>
-        <p class="section-subtitle">Deterministic profiling runs in the browser before the analyst agent so the workflow stays responsive while still surfacing schema, warnings, and business context from the uploaded dataset.</p>
+        <p class="section-subtitle">Deterministic profiling runs before the analyst agent so the rest of the workflow operates from a cleaner business view with stronger structure, clearer warnings, and better chart context.</p>
         <div class="eda-chip-row">
           <span class="eda-chip">Target: ${schema.target || "Not detected"}</span>
           <span class="eda-chip">Time: ${schema.time || "Not detected"}</span>
@@ -811,7 +830,7 @@ async function renderEdaPage(rows) {
 
     <div class="card fade-in" style="margin-top:18px;">
       <div class="section-title">Auto-generated charts</div>
-      <div class="section-subtitle">These visuals are generated directly from the uploaded dataset in the browser before the analyst agent answers any question.</div>
+      <div class="section-subtitle">These visuals are generated directly from the uploaded dataset before the analyst agent answers any question.</div>
       <div class="slide-grid" style="margin-top:14px;">
         ${(report.chart_manifest || []).length ? report.chart_manifest.map((chart, idx) => `
           <div class="preview-card slide eda-chart-card" style="animation-delay:${0.04 * idx}s">
@@ -823,7 +842,7 @@ async function renderEdaPage(rows) {
               ${chart.chart_url ? `<img src="${chart.chart_url}" alt="${chart.title}" loading="lazy" />` : "<p class='muted small'>Backend chart unavailable in fallback mode.</p>"}
             </div>
           </div>
-        `).join("") : "<p class='muted'>Lightweight browser-side EDA is active on the public site, so this page focuses on schema, quality checks, and analyst handoff without sending extra profiling jobs to the backend.</p>"}
+        `).join("") : "<p class='muted'>Charts are unavailable in browser fallback mode.</p>"}
       </div>
     </div>
 
