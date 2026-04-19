@@ -299,7 +299,7 @@ function renderTopbar(page) {
       <div>
         <div class="kicker">Ecommerce Multi-Agent Analytics</div>
         <div class="title">From data to insights to presentation.</div>
-        <div class="subtitle">Interrogate your ecommerce data with an AI analyst agent, benchmark models, and export a stakeholder deck.</div>
+        <div class="subtitle">Profile a dataset, interrogate it with an AI analyst, benchmark models, and export a stakeholder deck.</div>
       </div>
       <div class="nav-links">
         ${nav}
@@ -348,32 +348,21 @@ function renderUploadCard(summary) {
   if (!host) return;
   const samplingInfo = getSamplingInfo();
   const loadingInfo = getLoadingInfo();
-  const analysisTag = summary.analysis_rows && summary.analysis_grain
-    ? `<span class="tag">Analysis: ${Number(summary.analysis_rows).toLocaleString()} ${summary.analysis_grain}</span>`
-    : "";
-  const sampledTag = samplingInfo?.sampled
-    ? `<span class="tag">Sampled: ${Number(samplingInfo.analysisRows).toLocaleString()} of ${Number(samplingInfo.sourceRows).toLocaleString()} rows</span>`
+  const sampledNote = samplingInfo?.sampled
+    ? ` Sampled ${Number(samplingInfo.analysisRows).toLocaleString()} of ${Number(samplingInfo.sourceRows).toLocaleString()} rows for responsive analysis.`
     : "";
   const loadingNote = loadingInfo?.active
-    ? `<div class="loading-inline"><span class="inline-spinner"></span><span>Refreshing the overview and regenerating insights for <strong>${loadingInfo.fileName}</strong>${loadingInfo.sampled ? ` using a ${Number(loadingInfo.analysisRows).toLocaleString()}-row sample` : ""}.</span></div>`
+    ? `<div class="loading-inline"><span class="inline-spinner"></span><span>Refreshing the overview for <strong>${loadingInfo.fileName}</strong>${loadingInfo.sampled ? ` using a ${Number(loadingInfo.analysisRows).toLocaleString()}-row sample` : ""}.</span></div>`
     : "";
   host.innerHTML = `
     <div class="upload-card fade-in">
       <div class="section-title">Active dataset</div>
-      <div class="section-subtitle">Upload a customer, session, or ecommerce performance CSV to power all tabs. Large files are sampled automatically for responsive analysis.</div>
+      <div class="section-subtitle">Drop a customer, session, or ecommerce performance CSV to power every tab. Large files are sampled automatically.${sampledNote}</div>
       ${loadingNote}
       <div class="upload-row">
         <input id="datasetUpload" type="file" accept=".csv" />
-        <a class="button-link secondary" href="./assets/default_dataset.csv" download>Download sample</a>
         <button class="secondary" id="resetDatasetButton" type="button">Reset to sample</button>
-      </div>
-      <div class="toolbar" style="margin-top:10px;">
-        <span class="tag">Dataset: ${getDatasetName()}</span>
-        <span class="tag">Rows: ${summary.rows}</span>
-        <span class="tag">Columns: ${summary.columns}</span>
-        ${analysisTag}
-        ${sampledTag}
-        <span class="tag">Outcome: ${summary.schema?.target || "Not detected"}</span>
+        <a class="muted small" href="./assets/default_dataset.csv" download style="margin-left:auto;">Download sample CSV</a>
       </div>
     </div>
   `;
@@ -506,7 +495,7 @@ async function renderOverviewPage(rows) {
           <li>Channel grouping: <strong>${summary.schema?.channel || "Not detected"}</strong></li>
           <li>Time grouping: <strong>${summary.schema?.time || "Not detected"}</strong></li>
         </ul>
-        <div class="toolbar" style="margin-top:10px;">
+        <div class="toolbar" style="margin-top:12px;">
           <a class="button-link" href="./eda.html">Open EDA Agent</a>
           <a class="button-link secondary" href="./analyst.html">Ask Analyst Agent</a>
         </div>
@@ -521,7 +510,7 @@ async function renderOverviewPage(rows) {
         </ul>
       </div>
     </div>
-    <div class="card fade-in" style="margin-top:10px; animation-delay:0.12s">
+    <div class="card fade-in" style="margin-top:14px; animation-delay:0.12s">
       <div class="section-title">Dataset preview</div>
       <div class="section-subtitle">First 12 rows from the active dataset.</div>
       ${tableFromRows(summary.preview || rows.slice(0, 12))}
@@ -613,8 +602,9 @@ function renderEdaReport(report) {
   const profile = report.profile || {};
   const quality = report.quality_checks || {};
   const charts = report.chart_manifest || [];
+  const chartCount = Math.min(charts.length, 4);
   const chartHtml = charts.length
-    ? `<div class="chart-grid">${charts.map((chart) => `
+    ? `<div class="chart-grid" data-count="${chartCount}">${charts.map((chart) => `
         <div class="card chart-card">
           <div class="section-title">${chart.title}</div>
           <div class="section-subtitle">${chart.caption}</div>
@@ -631,10 +621,10 @@ function renderEdaReport(report) {
       ${metricCard("Outcome Rate", safePercent(profile.target_rate), "Detected conversion/purchase rate")}
     </div>
 
-    <div class="grid-main" style="margin-top:10px;">
+    <div class="grid-main" style="margin-top:14px;">
       <div class="card fade-in">
         <div class="section-title">Detected ecommerce schema</div>
-        <div class="section-subtitle">The EDA agent maps arbitrary ecommerce columns into reusable business roles.</div>
+        <div class="section-subtitle">Arbitrary columns mapped into reusable business roles.</div>
         <div class="schema-list">${renderSchemaRows(profile.schema || {})}</div>
       </div>
       <div class="card fade-in" style="animation-delay:0.06s">
@@ -642,15 +632,15 @@ function renderEdaReport(report) {
         <ul>${(quality.warnings || []).map((warning) => `<li>${warning}</li>`).join("")}</ul>
         <div class="toolbar" style="margin-top:10px;">
           <span class="tag">Duplicates: ${Number(quality.duplicate_rows || 0).toLocaleString()}</span>
-          <span class="tag">High-missing fields: ${(quality.null_heavy_columns || []).length}</span>
+          <span class="tag">High-missing: ${(quality.null_heavy_columns || []).length}</span>
           <span class="tag">Outlier fields: ${(quality.numeric_outliers || []).length}</span>
         </div>
       </div>
     </div>
 
-    <div style="margin-top:10px;">${chartHtml}</div>
+    <div style="margin-top:14px;">${chartHtml}</div>
 
-    <div class="grid-2" style="margin-top:10px;">
+    <div class="grid-2" style="margin-top:14px;">
       <div class="card fade-in">
         <div class="section-title">Key findings</div>
         <ul>${(report.key_findings || []).map((finding) => `<li>${finding}</li>`).join("") || "<li>No findings generated yet.</li>"}</ul>
@@ -661,16 +651,18 @@ function renderEdaReport(report) {
       </div>
     </div>
 
-    <div class="grid-2" style="margin-top:10px;">
-      <div class="card fade-in">
-        <div class="section-title">Handoff summary for Analyst Agent</div>
-        <div class="json-box">${JSON.stringify(report.handoff_summary || {}, null, 2)}</div>
-      </div>
-      <div class="card fade-in" style="animation-delay:0.06s">
-        <div class="section-title">Missingness details</div>
+    <div class="card fade-in" style="margin-top:14px;">
+      <div class="section-title">Handoff summary for Analyst Agent</div>
+      <div class="section-subtitle">The structured context that flows from the EDA agent into analyst reasoning.</div>
+      <div class="json-box">${JSON.stringify(report.handoff_summary || {}, null, 2)}</div>
+    </div>
+
+    <details class="collapse fade-in" style="margin-top:14px;">
+      <summary>Missingness details</summary>
+      <div class="collapse-body" style="padding-bottom:16px;">
         ${tableFromRows(quality.missing_summary || [])}
       </div>
-    </div>
+    </details>
   `;
 }
 
@@ -680,14 +672,12 @@ async function renderEdaPage(rows) {
   host.innerHTML = `
     <div class="card fade-in">
       <div class="section-title">EDA Agent</div>
-      <div class="section-subtitle">Run deterministic profiling before analyst reasoning: dataset profile, quality checks, visual exploration, suggested questions, and handoff context.</div>
+      <div class="section-subtitle">Deterministic profiling before analyst reasoning — schema, quality checks, visuals, and handoff context.</div>
       <div class="toolbar">
         <button id="runEdaButton" type="button">Run EDA Agent</button>
-        <a class="button-link secondary" href="./index.html">Change dataset</a>
-        <span class="tag">Active dataset: ${getDatasetName()}</span>
       </div>
     </div>
-    <div id="edaResults" style="margin-top:10px;"></div>
+    <div id="edaResults" style="margin-top:14px;"></div>
   `;
 
   const results = document.getElementById("edaResults");
@@ -840,7 +830,7 @@ async function renderAnalystPage(rows) {
         <button id="runAnalystButton" type="button">Run analysis</button>
       </div>
     </div>
-    <div id="analystResults" style="margin-top:10px; display:grid; gap:14px;"></div>
+    <div id="analystResults" style="margin-top:14px; display:grid; gap:14px;"></div>
   `;
 
   document.querySelectorAll(".sample-question").forEach((btn) =>
@@ -903,6 +893,41 @@ async function fetchCsv(path) {
   return Papa.parse(text, { header: true, dynamicTyping: true, skipEmptyLines: true }).data;
 }
 
+const SCORE_KEYS = ["keyword_score", "recommendation_score", "completeness_score", "groundedness_score"];
+
+function renderMetricHeatmap(rows, keyField) {
+  if (!rows.length) return "<p class='muted'>Not enough data to render the breakdown.</p>";
+  const values = [];
+  rows.forEach((row) => SCORE_KEYS.forEach((key) => {
+    const v = Number(row[key]);
+    if (!Number.isNaN(v)) values.push(v);
+  }));
+  const min = values.length ? Math.min(...values) : 0;
+  const max = values.length ? Math.max(...values) : 1;
+  const prettyMetric = (key) => key.replace("_score", "").replace(/_/g, " ");
+
+  const head = SCORE_KEYS.map((k) => `<th>${prettyMetric(k)}</th>`).join("");
+  const body = rows.map((row) => {
+    const cells = SCORE_KEYS.map((k) => {
+      const v = Number(row[k]);
+      const t = max > min ? (v - min) / (max - min) : 0.5;
+      const alpha = 0.08 + t * 0.55;
+      const fg = t > 0.55 ? "white" : "#173948";
+      return `<td class="heat-cell" style="background:rgba(30,96,117,${alpha.toFixed(3)});color:${fg};">${v.toFixed(2)}</td>`;
+    }).join("");
+    return `<tr><th class="heat-row-label">${row[keyField]}</th>${cells}</tr>`;
+  }).join("");
+
+  return `
+    <div class="heatmap-wrap">
+      <table class="heatmap">
+        <thead><tr><th></th>${head}</tr></thead>
+        <tbody>${body}</tbody>
+      </table>
+    </div>
+  `;
+}
+
 async function renderEvaluationPage() {
   const [models, prompts, rag] = await Promise.all([
     fetchCsv("./assets/model_comparison.csv"),
@@ -910,60 +935,119 @@ async function renderEvaluationPage() {
     fetchCsv("./assets/rag_comparison.csv")
   ]);
 
-  const ragOn  = Number(rag.find((r) => String(r.rag_enabled).toLowerCase() === "true")?.overall_score  || 0).toFixed(2);
-  const ragOff = Number(rag.find((r) => String(r.rag_enabled).toLowerCase() === "false")?.overall_score || 0).toFixed(2);
+  const ragOnRow  = rag.find((r) => String(r.rag_enabled).toLowerCase() === "true");
+  const ragOffRow = rag.find((r) => String(r.rag_enabled).toLowerCase() === "false");
+  const ragOn  = Number(ragOnRow?.overall_score  || 0);
+  const ragOff = Number(ragOffRow?.overall_score || 0);
+  const ragLift = ragOn - ragOff;
+  const ragLiftStr = `${ragLift >= 0 ? "+" : ""}${ragLift.toFixed(2)}`;
+
+  const bestModel = models[0]?.model || "N/A";
+  const bestPrompt = prompts[0]?.prompt_style || "N/A";
+  const totalRuns = (models.length + prompts.length + rag.length) || 0;
+
+  const prettyModel = (m) => String(m).split("/").pop();
 
   document.getElementById("evaluationPage").innerHTML = `
+    <div class="card fade-in" style="margin-bottom:14px;">
+      <div class="section-title">Evaluation dashboard</div>
+      <div class="section-subtitle">Benchmark results across model × prompt × RAG combinations. Higher overall scores are better.</div>
+    </div>
+
     <div class="grid-4 fade-in">
-      ${metricCard("Best Model",  models[0]?.model  || "N/A", "Highest overall benchmark score")}
-      ${metricCard("Best Prompt", prompts[0]?.prompt_style || "N/A", "Highest overall benchmark score")}
-      ${metricCard("RAG On",  ragOn,  "Overall score with retrieval")}
-      ${metricCard("RAG Off", ragOff, "Overall score without retrieval")}
+      ${metricCard("Runs", totalRuns, "Aggregated benchmark rows")}
+      ${metricCard("Best Model", prettyModel(bestModel), "Highest overall score")}
+      ${metricCard("Best Prompt", String(bestPrompt).replace(/_/g, " "), "Highest overall score")}
+      ${metricCard("RAG Lift", ragLiftStr, "Score delta with vs without RAG")}
     </div>
 
-    <div class="card fade-in" style="margin-top:10px; animation-delay:0.06s">
-      <div class="section-title">Benchmark metrics explained</div>
-      <ul>
-        <li><strong>keyword_score</strong> — expected business keyword coverage</li>
-        <li><strong>recommendation_score</strong> — presence and actionability of recommendations</li>
-        <li><strong>completeness_score</strong> — completeness of the required JSON schema</li>
-        <li><strong>groundedness_score</strong> — overlap with retrieved evidence</li>
-        <li><strong>overall_score</strong> — average of the four core metrics</li>
-      </ul>
-    </div>
+    <details class="collapse fade-in" style="margin-top:14px; animation-delay:0.06s">
+      <summary>What do the scores mean?</summary>
+      <div class="collapse-body">
+        <ul>
+          <li><strong>keyword_score</strong> — expected business keyword coverage in the answer.</li>
+          <li><strong>recommendation_score</strong> — presence and usefulness of action items.</li>
+          <li><strong>completeness_score</strong> — how fully the required JSON fields are populated.</li>
+          <li><strong>groundedness_score</strong> — overlap between the answer and retrieved evidence.</li>
+          <li><strong>overall_score</strong> — simple average of the four metrics above.</li>
+        </ul>
+      </div>
+    </details>
 
-    <div class="card fade-in" style="margin-top:10px; animation-delay:0.1s">
+    <div class="card fade-in" style="margin-top:14px; animation-delay:0.1s">
       <div class="eval-section-header">
-        <div class="section-title" style="margin:0;">Model performance</div>
+        <div class="section-title" style="margin:0;">By model</div>
         <span class="eval-section-pill">Models</span>
       </div>
-      <div class="section-subtitle">Overall score by model — higher is better.</div>
-      ${renderBarList(models.map((r) => ({ key: r.model, value: Number(r.overall_score) })))}
-      <hr class="section-divider">
-      <div class="section-title" style="margin-bottom:12px;">Detailed results</div>
-      ${tableFromRows(models)}
+      <div class="section-subtitle">Overall score and per-metric breakdown by model.</div>
+      <div class="eval-group">
+        <div class="eval-panels">
+          <div class="eval-panel">
+            <div class="panel-label">Overall score</div>
+            ${renderBarList(models.map((r) => ({ key: prettyModel(r.model), value: Number(r.overall_score) })))}
+          </div>
+          <div class="eval-panel">
+            <div class="panel-label">Metric breakdown</div>
+            ${renderMetricHeatmap(models.map((r) => ({ ...r, model: prettyModel(r.model) })), "model")}
+          </div>
+        </div>
+      </div>
     </div>
 
-    <div class="card fade-in" style="margin-top:10px; animation-delay:0.14s">
+    <div class="card fade-in" style="margin-top:14px; animation-delay:0.14s">
       <div class="eval-section-header">
-        <div class="section-title" style="margin:0;">Prompt performance</div>
+        <div class="section-title" style="margin:0;">By prompt style</div>
         <span class="eval-section-pill">Prompts</span>
       </div>
-      <div class="section-subtitle">Overall score by prompt style — higher is better.</div>
-      ${renderBarList(prompts.map((r) => ({ key: r.prompt_style, value: Number(r.overall_score) })))}
-      <hr class="section-divider">
-      <div class="section-title" style="margin-bottom:12px;">Detailed results</div>
-      ${tableFromRows(prompts)}
+      <div class="section-subtitle">Overall score and per-metric breakdown by prompt style.</div>
+      <div class="eval-group">
+        <div class="eval-panels">
+          <div class="eval-panel">
+            <div class="panel-label">Overall score</div>
+            ${renderBarList(prompts.map((r) => ({ key: String(r.prompt_style).replace(/_/g, " "), value: Number(r.overall_score) })))}
+          </div>
+          <div class="eval-panel">
+            <div class="panel-label">Metric breakdown</div>
+            ${renderMetricHeatmap(prompts.map((r) => ({ ...r, prompt_style: String(r.prompt_style).replace(/_/g, " ") })), "prompt_style")}
+          </div>
+        </div>
+      </div>
     </div>
 
-    <div class="card fade-in" style="margin-top:10px; animation-delay:0.18s">
+    <div class="card fade-in" style="margin-top:14px; animation-delay:0.18s">
       <div class="eval-section-header">
-        <div class="section-title" style="margin:0;">RAG comparison</div>
+        <div class="section-title" style="margin:0;">RAG vs no-RAG</div>
         <span class="eval-section-pill">Retrieval</span>
       </div>
-      <div class="section-subtitle">How retrieval-augmented generation affects answer quality.</div>
-      ${tableFromRows(rag)}
+      <div class="section-subtitle">How retrieval-augmented generation shifts answer quality.</div>
+      <div class="rag-pair">
+        <div class="rag-tile on">
+          <div class="rag-label">RAG enabled</div>
+          <div class="rag-score">${ragOn.toFixed(2)}</div>
+          <div class="rag-note">Overall score with retrieved evidence.</div>
+        </div>
+        <div class="rag-tile off">
+          <div class="rag-label">RAG disabled</div>
+          <div class="rag-score">${ragOff.toFixed(2)}</div>
+          <div class="rag-note">Overall score without retrieved evidence.</div>
+        </div>
+      </div>
+      <div style="margin-top:14px;">
+        ${renderMetricHeatmap(rag.map((r) => ({ ...r, rag_enabled: String(r.rag_enabled).toLowerCase() === "true" ? "RAG on" : "RAG off" })), "rag_enabled")}
+      </div>
     </div>
+
+    <details class="collapse fade-in" style="margin-top:14px; animation-delay:0.22s">
+      <summary>Raw benchmark rows</summary>
+      <div class="collapse-body" style="padding-bottom:16px;">
+        <div class="panel-label" style="margin:6px 0 8px;">Models</div>
+        ${tableFromRows(models)}
+        <div class="panel-label" style="margin:14px 0 8px;">Prompts</div>
+        ${tableFromRows(prompts)}
+        <div class="panel-label" style="margin:14px 0 8px;">Retrieval</div>
+        ${tableFromRows(rag)}
+      </div>
+    </details>
   `;
 }
 
@@ -1081,7 +1165,7 @@ async function renderPresentationPage(rows) {
         <span class="tag">${slides.length} slides</span>
       </div>
     </div>
-    <div class="slide-grid" style="margin-top:10px;">
+    <div class="slide-grid" style="margin-top:14px;">
       ${slides.map((slide, idx) => `
         <div class="preview-card slide fade-in" style="animation-delay:${0.06 * idx}s">
           <div>
