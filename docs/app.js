@@ -367,7 +367,7 @@ function renderUploadCard(summary) {
         <a class="button-link secondary" href="./assets/default_dataset.csv" download>Download sample</a>
         <button class="secondary" id="resetDatasetButton" type="button">Reset to sample</button>
       </div>
-      <div class="toolbar" style="margin-top:14px;">
+      <div class="toolbar" style="margin-top:10px;">
         <span class="tag">Dataset: ${getDatasetName()}</span>
         <span class="tag">Rows: ${summary.rows}</span>
         <span class="tag">Columns: ${summary.columns}</span>
@@ -506,7 +506,7 @@ async function renderOverviewPage(rows) {
           <li>Channel grouping: <strong>${summary.schema?.channel || "Not detected"}</strong></li>
           <li>Time grouping: <strong>${summary.schema?.time || "Not detected"}</strong></li>
         </ul>
-        <div class="toolbar" style="margin-top:16px;">
+        <div class="toolbar" style="margin-top:10px;">
           <a class="button-link" href="./eda.html">Open EDA Agent</a>
           <a class="button-link secondary" href="./analyst.html">Ask Analyst Agent</a>
         </div>
@@ -521,7 +521,7 @@ async function renderOverviewPage(rows) {
         </ul>
       </div>
     </div>
-    <div class="card fade-in" style="margin-top:18px; animation-delay:0.12s">
+    <div class="card fade-in" style="margin-top:10px; animation-delay:0.12s">
       <div class="section-title">Dataset preview</div>
       <div class="section-subtitle">First 12 rows from the active dataset.</div>
       ${tableFromRows(summary.preview || rows.slice(0, 12))}
@@ -631,7 +631,7 @@ function renderEdaReport(report) {
       ${metricCard("Outcome Rate", safePercent(profile.target_rate), "Detected conversion/purchase rate")}
     </div>
 
-    <div class="grid-main" style="margin-top:18px;">
+    <div class="grid-main" style="margin-top:10px;">
       <div class="card fade-in">
         <div class="section-title">Detected ecommerce schema</div>
         <div class="section-subtitle">The EDA agent maps arbitrary ecommerce columns into reusable business roles.</div>
@@ -640,7 +640,7 @@ function renderEdaReport(report) {
       <div class="card fade-in" style="animation-delay:0.06s">
         <div class="section-title">Quality checks</div>
         <ul>${(quality.warnings || []).map((warning) => `<li>${warning}</li>`).join("")}</ul>
-        <div class="toolbar" style="margin-top:14px;">
+        <div class="toolbar" style="margin-top:10px;">
           <span class="tag">Duplicates: ${Number(quality.duplicate_rows || 0).toLocaleString()}</span>
           <span class="tag">High-missing fields: ${(quality.null_heavy_columns || []).length}</span>
           <span class="tag">Outlier fields: ${(quality.numeric_outliers || []).length}</span>
@@ -648,9 +648,9 @@ function renderEdaReport(report) {
       </div>
     </div>
 
-    <div style="margin-top:18px;">${chartHtml}</div>
+    <div style="margin-top:10px;">${chartHtml}</div>
 
-    <div class="grid-2" style="margin-top:18px;">
+    <div class="grid-2" style="margin-top:10px;">
       <div class="card fade-in">
         <div class="section-title">Key findings</div>
         <ul>${(report.key_findings || []).map((finding) => `<li>${finding}</li>`).join("") || "<li>No findings generated yet.</li>"}</ul>
@@ -661,7 +661,7 @@ function renderEdaReport(report) {
       </div>
     </div>
 
-    <div class="grid-2" style="margin-top:18px;">
+    <div class="grid-2" style="margin-top:10px;">
       <div class="card fade-in">
         <div class="section-title">Handoff summary for Analyst Agent</div>
         <div class="json-box">${JSON.stringify(report.handoff_summary || {}, null, 2)}</div>
@@ -687,7 +687,7 @@ async function renderEdaPage(rows) {
         <span class="tag">Active dataset: ${getDatasetName()}</span>
       </div>
     </div>
-    <div id="edaResults" style="margin-top:18px;"></div>
+    <div id="edaResults" style="margin-top:10px;"></div>
   `;
 
   const results = document.getElementById("edaResults");
@@ -735,7 +735,7 @@ function renderAnalystResponse(responseData) {
   return `
     <div class="card fade-in">
       <div class="section-title">Analysis</div>
-      <div class="response-grid" style="margin-top:12px;">
+      <div class="response-grid" style="margin-top:10px;">
         <div class="response-section summary">
           <div class="response-label">Summary</div>
           <p>${r.summary}</p>
@@ -831,16 +831,16 @@ async function renderAnalystPage(rows) {
     <div class="card fade-in">
       <div class="section-title">Analyst Agent Demo</div>
       <div class="section-subtitle">Ask a business question — the agent retrieves relevant data, reasons over it, and returns a structured answer.</div>
-      <div class="toolbar" style="margin-bottom:14px;">${samples}</div>
+      <div class="toolbar" style="margin-bottom:12px;">${samples}</div>
       <textarea id="questionInput" placeholder="Enter a business question...">${SAMPLE_QUESTIONS[0]}</textarea>
-      <div class="config-row" style="margin-top:14px;">
+      <div class="config-row" style="margin-top:10px;">
         ${modelSelect}${promptSelect}${ragToggle}
       </div>
-      <div class="toolbar" style="margin-top:14px;">
+      <div class="toolbar" style="margin-top:10px;">
         <button id="runAnalystButton" type="button">Run analysis</button>
       </div>
     </div>
-    <div id="analystResults" style="margin-top:18px; display:grid; gap:16px;"></div>
+    <div id="analystResults" style="margin-top:10px; display:grid; gap:14px;"></div>
   `;
 
   document.querySelectorAll(".sample-question").forEach((btn) =>
@@ -921,7 +921,7 @@ async function renderEvaluationPage() {
       ${metricCard("RAG Off", ragOff, "Overall score without retrieval")}
     </div>
 
-    <div class="card fade-in" style="margin-top:18px; animation-delay:0.06s">
+    <div class="card fade-in" style="margin-top:10px; animation-delay:0.06s">
       <div class="section-title">Benchmark metrics explained</div>
       <ul>
         <li><strong>keyword_score</strong> — expected business keyword coverage</li>
@@ -932,7 +932,7 @@ async function renderEvaluationPage() {
       </ul>
     </div>
 
-    <div class="card fade-in" style="margin-top:18px; animation-delay:0.1s">
+    <div class="card fade-in" style="margin-top:10px; animation-delay:0.1s">
       <div class="eval-section-header">
         <div class="section-title" style="margin:0;">Model performance</div>
         <span class="eval-section-pill">Models</span>
@@ -944,7 +944,7 @@ async function renderEvaluationPage() {
       ${tableFromRows(models)}
     </div>
 
-    <div class="card fade-in" style="margin-top:18px; animation-delay:0.14s">
+    <div class="card fade-in" style="margin-top:10px; animation-delay:0.14s">
       <div class="eval-section-header">
         <div class="section-title" style="margin:0;">Prompt performance</div>
         <span class="eval-section-pill">Prompts</span>
@@ -956,7 +956,7 @@ async function renderEvaluationPage() {
       ${tableFromRows(prompts)}
     </div>
 
-    <div class="card fade-in" style="margin-top:18px; animation-delay:0.18s">
+    <div class="card fade-in" style="margin-top:10px; animation-delay:0.18s">
       <div class="eval-section-header">
         <div class="section-title" style="margin:0;">RAG comparison</div>
         <span class="eval-section-pill">Retrieval</span>
@@ -1081,7 +1081,7 @@ async function renderPresentationPage(rows) {
         <span class="tag">${slides.length} slides</span>
       </div>
     </div>
-    <div class="slide-grid" style="margin-top:18px;">
+    <div class="slide-grid" style="margin-top:10px;">
       ${slides.map((slide, idx) => `
         <div class="preview-card slide fade-in" style="animation-delay:${0.06 * idx}s">
           <div>
