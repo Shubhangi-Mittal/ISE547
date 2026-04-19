@@ -900,7 +900,7 @@ def render_analyst(agent: AnalystRAGAgent) -> None:
 
 
 # ─────────────────────────────────────────
-# Tab 4 — Evaluation
+# Tab 5 — Evaluation
 # ─────────────────────────────────────────
 def render_evaluation() -> None:
     section_header(
@@ -916,13 +916,15 @@ def render_evaluation() -> None:
     ctrl = st.columns([0.6, 0.8, 0.6, 1.2])
     with ctrl[0]:
         limit = st.number_input("Questions", min_value=10, max_value=100, value=20, step=10)
+    with ctrl[1]:
+        use_judge = st.checkbox("Use live LLM judge", value=False)
     with ctrl[3]:
         run_eval = st.button("Run benchmark", type="primary", use_container_width=True)
 
     if run_eval:
         progress = st.progress(0, text="Starting evaluation…")
         with st.spinner("Evaluating all model × prompt × RAG combinations…"):
-            results_df = pipeline.run(limit=int(limit))
+            results_df = pipeline.run(limit=int(limit), enable_judge=use_judge)
         progress.progress(100, text="Done")
         st.success(f"Benchmark complete — {len(results_df)} rows saved.")
 
@@ -936,14 +938,15 @@ def render_evaluation() -> None:
     rag_tbl = agg["rag_comparison"]
 
     rag_lift = "N/A"
+    score_col = "enhanced_overall_score" if "enhanced_overall_score" in model_tbl.columns else "overall_score"
     if True in rag_tbl.index and False in rag_tbl.index:
-        rag_lift = f"{rag_tbl.loc[True, 'overall_score'] - rag_tbl.loc[False, 'overall_score']:+.2f}"
+        rag_lift = f"{rag_tbl.loc[True, score_col] - rag_tbl.loc[False, score_col]:+.2f}"
 
     # Summary metrics
     m_cols = st.columns(4)
     with m_cols[0]: metric_card("Runs", str(len(results_df)), "Total evaluated rows")
-    with m_cols[1]: metric_card("Best Model", str(model_tbl.index[0]), "Highest overall score")
-    with m_cols[2]: metric_card("Best Prompt", str(prompt_tbl.index[0]), "Highest overall score")
+    with m_cols[1]: metric_card("Best Model", str(model_tbl.index[0]), "Highest enhanced score")
+    with m_cols[2]: metric_card("Best Prompt", str(prompt_tbl.index[0]), "Highest enhanced score")
     with m_cols[3]: metric_card("RAG Lift", rag_lift, "Score delta with vs without RAG")
 
     gap()
@@ -958,25 +961,51 @@ def render_evaluation() -> None:
             | `recommendation_score` | Presence and usefulness of action items |
             | `completeness_score` | How fully the required JSON fields are populated |
             | `groundedness_score` | Overlap between the answer and retrieved evidence |
-            | `overall_score` | Simple average of the four metrics above |
+            | `business_specificity_score` | Use of ecommerce-specific dimensions such as customer, channel, revenue, product, session, and conversion |
+            | `json_validity_score` | Whether the raw model output is valid JSON and follows the required schema |
+            | `retrieval_usefulness_score` | Whether retrieved context is meaningfully reflected in the answer |
+            | `unique_insight_ratio` | How non-repetitive the insights, patterns, and recommendations are |
+            | `avg_response_length` | Average word count across generated response sections |
+            | `insight_count` | Count of generated insights, patterns, and recommendations |
+            | `judge_usefulness` | LLM-as-judge rating from 1 to 5 for business decision value |
+            | `judge_clarity` | LLM-as-judge rating from 1 to 5 for readability and structure |
+            | `judge_correctness` | LLM-as-judge rating from 1 to 5 for support from dataset context |
+            | `enhanced_overall_score` | Combined automatic + judge quality score |
             """
         )
 
     gap()
     score_cols = ["keyword_score", "recommendation_score", "completeness_score", "groundedness_score"]
+    enhanced_cols = [
+        "business_specificity_score", "json_validity_score",
+        "retrieval_usefulness_score", "unique_insight_ratio",
+        "enhanced_overall_score",
+    ]
+    judge_cols = ["judge_usefulness", "judge_clarity", "judge_correctness", "judge_average"]
+
+    # ── LLM-as-judge ──────────────────────────
+    if all(col in model_tbl.columns for col in judge_cols):
+        st.markdown('<div class="eval-group">', unsafe_allow_html=True)
+        st.markdown('<div class="eval-group-title">LLM-as-Judge Ratings</div>', unsafe_allow_html=True)
+        plot_heatmap(model_tbl[judge_cols], "Usefulness, clarity, correctness by model")
+        st.markdown("</div>", unsafe_allow_html=True)
 
     # ── By model (stacked) ────────────────────
     st.markdown('<div class="eval-group">', unsafe_allow_html=True)
     st.markdown('<div class="eval-group-title">By Model</div>', unsafe_allow_html=True)
-    plot_bar(model_tbl["overall_score"], "Overall score by model", horizontal=True)
+    plot_bar(model_tbl[score_col], "Enhanced overall score by model", horizontal=True)
     plot_heatmap(model_tbl[score_cols], "Metric breakdown by model")
+    if all(col in model_tbl.columns for col in enhanced_cols):
+        plot_heatmap(model_tbl[enhanced_cols], "Enhanced quality breakdown by model")
     st.markdown("</div>", unsafe_allow_html=True)
 
     # ── By prompt style (stacked) ─────────────
     st.markdown('<div class="eval-group">', unsafe_allow_html=True)
     st.markdown('<div class="eval-group-title">By Prompt Style</div>', unsafe_allow_html=True)
-    plot_bar(prompt_tbl["overall_score"], "Overall score by prompt style", horizontal=True)
+    plot_bar(prompt_tbl[score_col], "Enhanced overall score by prompt style", horizontal=True)
     plot_heatmap(prompt_tbl[score_cols], "Metric breakdown by prompt style")
+    if all(col in prompt_tbl.columns for col in enhanced_cols):
+        plot_heatmap(prompt_tbl[enhanced_cols], "Enhanced quality breakdown by prompt style")
     st.markdown("</div>", unsafe_allow_html=True)
 
     # ── RAG comparison ────────────────────────
@@ -990,13 +1019,15 @@ def render_evaluation() -> None:
         display_cols = [
             "question_id", "category", "model", "prompt_style", "rag_enabled",
             "keyword_score", "recommendation_score", "completeness_score",
-            "groundedness_score", "overall_score", "summary",
+            "groundedness_score", "business_specificity_score",
+            "retrieval_usefulness_score", "judge_usefulness",
+            "judge_clarity", "judge_correctness", score_col, "summary",
         ]
-        st.dataframe(results_df[display_cols].head(40), use_container_width=True)
+        st.dataframe(results_df[[col for col in display_cols if col in results_df.columns]].head(40), use_container_width=True)
 
 
 # ─────────────────────────────────────────
-# Tab 5 — Presentation
+# Tab 4 — Presentation
 # ─────────────────────────────────────────
 def render_presentation(dataset_path: str) -> None:
     section_header(
@@ -1122,8 +1153,8 @@ def main() -> None:
     render_sidebar(dataset, dataset_name)
     render_topbar(dataset_name, dataset)
 
-    t_overview, t_eda, t_analyst, t_eval, t_pres = st.tabs(
-        ["Overview", "EDA", "Analyst", "Evaluation", "Presentation"]
+    t_overview, t_eda, t_analyst, t_pres, t_eval = st.tabs(
+        ["Overview", "EDA", "Analyst", "Presentation", "Evaluation"]
     )
 
     with t_overview:
@@ -1135,11 +1166,11 @@ def main() -> None:
     with t_analyst:
         render_analyst(agent)
 
-    with t_eval:
-        render_evaluation()
-
     with t_pres:
         render_presentation(dataset_path)
+
+    with t_eval:
+        render_evaluation()
 
 
 if __name__ == "__main__":

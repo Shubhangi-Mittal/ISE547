@@ -289,8 +289,8 @@ function renderTopbar(page) {
     ["index.html", "Overview"],
     ["eda.html", "EDA Agent"],
     ["analyst.html", "Analyst Demo"],
-    ["evaluation.html", "Evaluation"],
-    ["presentation.html", "Presentation"]
+    ["presentation.html", "Presentation"],
+    ["evaluation.html", "Evaluation"]
   ].map(([href, label]) => `<a class="nav-link ${page === href ? "active" : ""}" href="./${href}">${label}</a>`).join("");
 
   const host = document.getElementById("topbar");
@@ -893,27 +893,41 @@ async function fetchCsv(path) {
   return Papa.parse(text, { header: true, dynamicTyping: true, skipEmptyLines: true }).data;
 }
 
-const SCORE_KEYS = ["keyword_score", "recommendation_score", "completeness_score", "groundedness_score"];
+const CORE_SCORE_KEYS = ["keyword_score", "recommendation_score", "completeness_score", "groundedness_score"];
+const ENHANCED_SCORE_KEYS = [
+  "business_specificity_score",
+  "json_validity_score",
+  "retrieval_usefulness_score",
+  "unique_insight_ratio",
+  "enhanced_overall_score"
+];
+const JUDGE_SCORE_KEYS = ["judge_usefulness", "judge_clarity", "judge_correctness", "judge_average"];
 
-function renderMetricHeatmap(rows, keyField) {
+function renderMetricHeatmap(rows, keyField, scoreKeys = CORE_SCORE_KEYS, options = {}) {
   if (!rows.length) return "<p class='muted'>Not enough data to render the breakdown.</p>";
   const values = [];
-  rows.forEach((row) => SCORE_KEYS.forEach((key) => {
+  rows.forEach((row) => scoreKeys.forEach((key) => {
     const v = Number(row[key]);
     if (!Number.isNaN(v)) values.push(v);
   }));
   const min = values.length ? Math.min(...values) : 0;
   const max = values.length ? Math.max(...values) : 1;
-  const prettyMetric = (key) => key.replace("_score", "").replace(/_/g, " ");
+  const prettyMetric = (key) => key
+    .replace("judge_", "")
+    .replace("_score", "")
+    .replace("_ratio", " ratio")
+    .replace("_average", " avg")
+    .replace(/_/g, " ");
+  const formatter = options.formatter || ((v) => Number(v).toFixed(2));
 
-  const head = SCORE_KEYS.map((k) => `<th>${prettyMetric(k)}</th>`).join("");
+  const head = scoreKeys.map((k) => `<th>${prettyMetric(k)}</th>`).join("");
   const body = rows.map((row) => {
-    const cells = SCORE_KEYS.map((k) => {
+    const cells = scoreKeys.map((k) => {
       const v = Number(row[k]);
       const t = max > min ? (v - min) / (max - min) : 0.5;
       const alpha = 0.08 + t * 0.55;
       const fg = t > 0.55 ? "white" : "#173948";
-      return `<td class="heat-cell" style="background:rgba(30,96,117,${alpha.toFixed(3)});color:${fg};">${v.toFixed(2)}</td>`;
+      return `<td class="heat-cell" style="background:rgba(30,96,117,${alpha.toFixed(3)});color:${fg};">${formatter(v, k)}</td>`;
     }).join("");
     return `<tr><th class="heat-row-label">${row[keyField]}</th>${cells}</tr>`;
   }).join("");
@@ -928,51 +942,106 @@ function renderMetricHeatmap(rows, keyField) {
   `;
 }
 
+function metricValueFromQuality(rows, key) {
+  return Number(rows.find((row) => row.metric === key || row[""] === key)?.average_value || 0);
+}
+
+function normalizeQualityRows(rows) {
+  return rows.map((row) => ({
+    metric: row.metric || row[""] || Object.values(row)[0],
+    average_value: Number(row.average_value || Object.values(row)[1] || 0)
+  })).filter((row) => row.metric);
+}
+
+function renderJudgeCards(qualityRows) {
+  const usefulness = metricValueFromQuality(qualityRows, "judge_usefulness");
+  const clarity = metricValueFromQuality(qualityRows, "judge_clarity");
+  const correctness = metricValueFromQuality(qualityRows, "judge_correctness");
+  const average = metricValueFromQuality(qualityRows, "judge_average");
+  return `
+    <div class="grid-4">
+      ${metricCard("Usefulness", usefulness.toFixed(2), "1-5 judge rating for decision value")}
+      ${metricCard("Clarity", clarity.toFixed(2), "1-5 judge rating for readability")}
+      ${metricCard("Correctness", correctness.toFixed(2), "1-5 judge rating for support from data")}
+      ${metricCard("Judge Avg", average.toFixed(2), "Mean usefulness, clarity, correctness")}
+    </div>
+  `;
+}
+
 async function renderEvaluationPage() {
-  const [models, prompts, rag] = await Promise.all([
+  const [models, prompts, rag, categories, qualityRaw, examples] = await Promise.all([
     fetchCsv("./assets/model_comparison.csv"),
     fetchCsv("./assets/prompt_comparison.csv"),
-    fetchCsv("./assets/rag_comparison.csv")
+    fetchCsv("./assets/rag_comparison.csv"),
+    fetchCsv("./assets/category_comparison.csv"),
+    fetchCsv("./assets/quality_metrics.csv"),
+    fetchCsv("./assets/top_evaluation_examples.csv")
   ]);
 
+  const quality = normalizeQualityRows(qualityRaw);
   const ragOnRow  = rag.find((r) => String(r.rag_enabled).toLowerCase() === "true");
   const ragOffRow = rag.find((r) => String(r.rag_enabled).toLowerCase() === "false");
-  const ragOn  = Number(ragOnRow?.overall_score  || 0);
-  const ragOff = Number(ragOffRow?.overall_score || 0);
+  const ragOn  = Number(ragOnRow?.enhanced_overall_score || ragOnRow?.overall_score || 0);
+  const ragOff = Number(ragOffRow?.enhanced_overall_score || ragOffRow?.overall_score || 0);
   const ragLift = ragOn - ragOff;
   const ragLiftStr = `${ragLift >= 0 ? "+" : ""}${ragLift.toFixed(2)}`;
 
   const bestModel = models[0]?.model || "N/A";
   const bestPrompt = prompts[0]?.prompt_style || "N/A";
-  const totalRuns = (models.length + prompts.length + rag.length) || 0;
+  const totalRuns = 640;
+  const enhancedAvg = metricValueFromQuality(quality, "enhanced_overall_score");
+  const judgeAvg = metricValueFromQuality(quality, "judge_average");
 
   const prettyModel = (m) => String(m).split("/").pop();
+  const scoreFormatter = (v) => Number(v).toFixed(2);
+  const judgeFormatter = (v) => Number(v).toFixed(2);
 
   document.getElementById("evaluationPage").innerHTML = `
     <div class="card fade-in" style="margin-bottom:14px;">
       <div class="section-title">Evaluation dashboard</div>
-      <div class="section-subtitle">Benchmark results across model × prompt × RAG combinations. Higher overall scores are better.</div>
+      <div class="section-subtitle">Final benchmark page for the full multi-agent system. Results compare model, prompt, retrieval, output quality, and LLM-as-judge ratings.</div>
     </div>
 
     <div class="grid-4 fade-in">
-      ${metricCard("Runs", totalRuns, "Aggregated benchmark rows")}
-      ${metricCard("Best Model", prettyModel(bestModel), "Highest overall score")}
-      ${metricCard("Best Prompt", String(bestPrompt).replace(/_/g, " "), "Highest overall score")}
-      ${metricCard("RAG Lift", ragLiftStr, "Score delta with vs without RAG")}
+      ${metricCard("Runs", totalRuns.toLocaleString(), "Model × prompt × RAG × question rows")}
+      ${metricCard("Best Model", prettyModel(bestModel), "Highest enhanced score")}
+      ${metricCard("Judge Avg", judgeAvg.toFixed(2), "Usefulness, clarity, correctness on 1-5 scale")}
+      ${metricCard("Enhanced Avg", enhancedAvg.toFixed(2), "Combined automatic + judge quality score")}
     </div>
 
     <details class="collapse fade-in" style="margin-top:14px; animation-delay:0.06s">
-      <summary>What do the scores mean?</summary>
+      <summary>Evaluation rubric and what each score means</summary>
       <div class="collapse-body">
         <ul>
           <li><strong>keyword_score</strong> — expected business keyword coverage in the answer.</li>
           <li><strong>recommendation_score</strong> — presence and usefulness of action items.</li>
           <li><strong>completeness_score</strong> — how fully the required JSON fields are populated.</li>
           <li><strong>groundedness_score</strong> — overlap between the answer and retrieved evidence.</li>
-          <li><strong>overall_score</strong> — simple average of the four metrics above.</li>
+          <li><strong>business_specificity_score</strong> — whether the answer uses concrete ecommerce concepts such as customers, channels, revenue, products, sessions, and conversion.</li>
+          <li><strong>json_validity_score</strong> — whether the raw model output is valid JSON and follows the expected analyst-agent schema.</li>
+          <li><strong>retrieval_usefulness_score</strong> — whether retrieved context appears meaningfully used in the final answer.</li>
+          <li><strong>unique_insight_ratio</strong> — how non-repetitive the insights, patterns, and recommendations are.</li>
+          <li><strong>avg_response_length</strong> — average word count across summary, insights, patterns, and recommendations.</li>
+          <li><strong>insight_count</strong> — number of generated insights, patterns, and recommendations.</li>
+          <li><strong>judge_usefulness</strong> — LLM-as-judge rating from 1 to 5 for business decision value.</li>
+          <li><strong>judge_clarity</strong> — LLM-as-judge rating from 1 to 5 for readability and structure.</li>
+          <li><strong>judge_correctness</strong> — LLM-as-judge rating from 1 to 5 for support from dataset context.</li>
+          <li><strong>enhanced_overall_score</strong> — combined quality score using core metrics, specificity, JSON validity, retrieval usefulness, and normalized judge average.</li>
         </ul>
       </div>
     </details>
+
+    <div class="card fade-in" style="margin-top:14px; animation-delay:0.08s">
+      <div class="eval-section-header">
+        <div class="section-title" style="margin:0;">LLM-as-judge ratings</div>
+        <span class="eval-section-pill">Judge</span>
+      </div>
+      <div class="section-subtitle">The judge rubric mirrors the sample report's human evaluation: usefulness, clarity, and correctness. When an OpenRouter key is available, the evaluator can call a judge model; otherwise the same rubric is applied deterministically for offline reproducibility.</div>
+      ${renderJudgeCards(quality)}
+      <div style="margin-top:14px;">
+        ${renderMetricHeatmap(models.map((r) => ({ ...r, model: prettyModel(r.model) })), "model", JUDGE_SCORE_KEYS, { formatter: judgeFormatter })}
+      </div>
+    </div>
 
     <div class="card fade-in" style="margin-top:14px; animation-delay:0.1s">
       <div class="eval-section-header">
@@ -983,12 +1052,32 @@ async function renderEvaluationPage() {
       <div class="eval-group">
         <div class="eval-panels">
           <div class="eval-panel">
-            <div class="panel-label">Overall score</div>
-            ${renderBarList(models.map((r) => ({ key: prettyModel(r.model), value: Number(r.overall_score) })))}
+            <div class="panel-label">Enhanced overall score</div>
+            ${renderBarList(models.map((r) => ({ key: prettyModel(r.model), value: Number(r.enhanced_overall_score || r.overall_score) })))}
           </div>
           <div class="eval-panel">
-            <div class="panel-label">Metric breakdown</div>
-            ${renderMetricHeatmap(models.map((r) => ({ ...r, model: prettyModel(r.model) })), "model")}
+            <div class="panel-label">Core metric breakdown</div>
+            ${renderMetricHeatmap(models.map((r) => ({ ...r, model: prettyModel(r.model) })), "model", CORE_SCORE_KEYS, { formatter: scoreFormatter })}
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card fade-in" style="margin-top:14px; animation-delay:0.12s">
+      <div class="eval-section-header">
+        <div class="section-title" style="margin:0;">Output quality metrics</div>
+        <span class="eval-section-pill">Quality</span>
+      </div>
+      <div class="section-subtitle">These metrics capture the sample-report-style dimensions: quantity, uniqueness, answer depth, formatting reliability, and retrieval usage.</div>
+      <div class="eval-group">
+        <div class="eval-panels">
+          <div class="eval-panel">
+            <div class="panel-label">Quality by model</div>
+            ${renderMetricHeatmap(models.map((r) => ({ ...r, model: prettyModel(r.model) })), "model", ENHANCED_SCORE_KEYS, { formatter: scoreFormatter })}
+          </div>
+          <div class="eval-panel">
+            <div class="panel-label">Quantity and depth by prompt</div>
+            ${renderMetricHeatmap(prompts.map((r) => ({ ...r, prompt_style: String(r.prompt_style).replace(/_/g, " ") })), "prompt_style", ["insight_count", "avg_response_length", "unique_insight_ratio"], { formatter: scoreFormatter })}
           </div>
         </div>
       </div>
@@ -1003,12 +1092,12 @@ async function renderEvaluationPage() {
       <div class="eval-group">
         <div class="eval-panels">
           <div class="eval-panel">
-            <div class="panel-label">Overall score</div>
-            ${renderBarList(prompts.map((r) => ({ key: String(r.prompt_style).replace(/_/g, " "), value: Number(r.overall_score) })))}
+            <div class="panel-label">Enhanced overall score</div>
+            ${renderBarList(prompts.map((r) => ({ key: String(r.prompt_style).replace(/_/g, " "), value: Number(r.enhanced_overall_score || r.overall_score) })))}
           </div>
           <div class="eval-panel">
-            <div class="panel-label">Metric breakdown</div>
-            ${renderMetricHeatmap(prompts.map((r) => ({ ...r, prompt_style: String(r.prompt_style).replace(/_/g, " ") })), "prompt_style")}
+            <div class="panel-label">Core metric breakdown</div>
+            ${renderMetricHeatmap(prompts.map((r) => ({ ...r, prompt_style: String(r.prompt_style).replace(/_/g, " ") })), "prompt_style", CORE_SCORE_KEYS, { formatter: scoreFormatter })}
           </div>
         </div>
       </div>
@@ -1033,11 +1122,37 @@ async function renderEvaluationPage() {
         </div>
       </div>
       <div style="margin-top:14px;">
-        ${renderMetricHeatmap(rag.map((r) => ({ ...r, rag_enabled: String(r.rag_enabled).toLowerCase() === "true" ? "RAG on" : "RAG off" })), "rag_enabled")}
+        ${renderMetricHeatmap(rag.map((r) => ({ ...r, rag_enabled: String(r.rag_enabled).toLowerCase() === "true" ? "RAG on" : "RAG off" })), "rag_enabled", ["overall_score", "groundedness_score", "retrieval_usefulness_score", "judge_correctness", "enhanced_overall_score"], { formatter: scoreFormatter })}
       </div>
     </div>
 
-    <details class="collapse fade-in" style="margin-top:14px; animation-delay:0.22s">
+    <div class="card fade-in" style="margin-top:14px; animation-delay:0.2s">
+      <div class="eval-section-header">
+        <div class="section-title" style="margin:0;">Category robustness</div>
+        <span class="eval-section-pill">Questions</span>
+      </div>
+      <div class="section-subtitle">Performance by business-question category helps show whether the agent is broadly useful or only strong on one type of question.</div>
+      ${renderMetricHeatmap(categories, "category", ["keyword_score", "business_specificity_score", "retrieval_usefulness_score", "judge_average", "enhanced_overall_score"], { formatter: scoreFormatter })}
+    </div>
+
+    <div class="card fade-in" style="margin-top:14px; animation-delay:0.22s">
+      <div class="eval-section-header">
+        <div class="section-title" style="margin:0;">Top evaluated examples</div>
+        <span class="eval-section-pill">Examples</span>
+      </div>
+      <div class="section-subtitle">A small sample of high-scoring outputs makes the evaluation interpretable instead of only numerical.</div>
+      ${tableFromRows(examples.slice(0, 8).map((row) => ({
+        question: row.question,
+        category: row.category,
+        model: prettyModel(row.model),
+        prompt: String(row.prompt_style).replace(/_/g, " "),
+        rag: row.rag_enabled,
+        judge: Number(row.judge_average || ((Number(row.judge_usefulness) + Number(row.judge_clarity) + Number(row.judge_correctness)) / 3)).toFixed(2),
+        enhanced: Number(row.enhanced_overall_score).toFixed(2)
+      })))}
+    </div>
+
+    <details class="collapse fade-in" style="margin-top:14px; animation-delay:0.24s">
       <summary>Raw benchmark rows</summary>
       <div class="collapse-body" style="padding-bottom:16px;">
         <div class="panel-label" style="margin:6px 0 8px;">Models</div>
@@ -1046,6 +1161,10 @@ async function renderEvaluationPage() {
         ${tableFromRows(prompts)}
         <div class="panel-label" style="margin:14px 0 8px;">Retrieval</div>
         ${tableFromRows(rag)}
+        <div class="panel-label" style="margin:14px 0 8px;">Categories</div>
+        ${tableFromRows(categories)}
+        <div class="panel-label" style="margin:14px 0 8px;">Quality metric averages</div>
+        ${tableFromRows(quality)}
       </div>
     </details>
   `;

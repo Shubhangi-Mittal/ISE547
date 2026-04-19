@@ -28,12 +28,12 @@ def run_demo(question: str, model: str, prompt_style: str, rag_enabled: bool) ->
     print("Parsed response:\n", result.parsed_response)
 
 
-def run_evaluation(limit: int | None = None) -> pd.DataFrame:
+def run_evaluation(limit: int | None = None, enable_judge: bool = True, judge_model: str = "openai/gpt-4o-mini") -> pd.DataFrame:
     from evaluation.evaluator import EvaluationPipeline
 
     agent = build_agent()
     pipeline = EvaluationPipeline(agent=agent, questions_path=QUESTIONS_PATH, output_dir=OUTPUT_DIR)
-    return pipeline.run(limit=limit)
+    return pipeline.run(limit=limit, enable_judge=enable_judge, judge_model=judge_model)
 
 
 def run_presentation() -> Path:
@@ -56,6 +56,8 @@ def parse_args() -> argparse.Namespace:
 
     eval_parser = subparsers.add_parser("evaluate", help="Run the experiment pipeline")
     eval_parser.add_argument("--limit", type=int, default=None)
+    eval_parser.add_argument("--no-judge", action="store_true", help="Skip usefulness/clarity/correctness judge ratings")
+    eval_parser.add_argument("--judge-model", default="openai/gpt-4o-mini")
 
     subparsers.add_parser("presentation", help="Generate the PowerPoint deck")
     return parser.parse_args()
@@ -66,7 +68,7 @@ def main() -> None:
     if args.command == "demo":
         run_demo(args.question, args.model, args.prompt_style, not args.no_rag)
     elif args.command == "evaluate":
-        df = run_evaluation(limit=args.limit)
+        df = run_evaluation(limit=args.limit, enable_judge=not args.no_judge, judge_model=args.judge_model)
         print(f"Saved {len(df)} evaluation rows to {OUTPUT_DIR / 'results.csv'}")
     elif args.command == "presentation":
         path = run_presentation()
