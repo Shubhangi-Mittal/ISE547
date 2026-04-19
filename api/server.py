@@ -14,7 +14,9 @@ from fastapi.responses import FileResponse
 from starlette.concurrency import run_in_threadpool
 
 from agents.analyst_agent import AnalystRAGAgent
+from agents.eda_agent import EDAAgent
 from agents.presentation_agent import PresentationGeneratorAgent
+from utils.dataset_adapter import read_dataset
 
 
 BASE_DIR = Path(__file__).resolve().parents[1]
@@ -53,9 +55,9 @@ def _save_upload(upload: UploadFile) -> Path:
 
 def _validate_csv(upload_path: Path) -> pd.DataFrame:
     try:
-        return pd.read_csv(upload_path)
+        return read_dataset(upload_path)
     except Exception as exc:
-        raise HTTPException(status_code=400, detail=f"Could not parse CSV file: {exc}") from exc
+        raise HTTPException(status_code=400, detail=f"Could not parse dataset file: {exc}") from exc
 
 
 @app.get("/health")
@@ -113,6 +115,39 @@ async def analyst_answer(
         "parsed_response": result.parsed_response,
         "raw_response": result.raw_response,
         "retrieved_context": result.retrieved_context,
+    }
+
+
+@app.post("/api/eda")
+async def profile_dataset(file: UploadFile = File(...)) -> dict:
+    """Run deterministic EDA profiling for the public HTML UI."""
+    upload_path = _save_upload(file)
+    await run_in_threadpool(_validate_csv, upload_path)
+    eda_agent = EDAAgent(output_dir=OUTPUT_DIR)
+    report_id = uuid.uuid4().hex[:12]
+    report = await run_in_threadpool(
+        eda_agent.analyze_dataset,
+        upload_path,
+        True,
+        f"api_{report_id}",
+        None,
+    )
+    return {
+        "dataset_name": file.filename,
+        "profile": report["profile"],
+        "quality_checks": report["quality_checks"],
+        "chart_manifest": [
+            {
+                **chart,
+                "chart_url": f"/api/downloads/{chart['filename']}",
+            }
+            for chart in report["chart_manifest"]
+        ],
+        "suggested_questions": report["suggested_questions"],
+        "handoff_summary": report["handoff_summary"],
+        "retrieval_chunks": report["retrieval_chunks"],
+        "key_findings": report["key_findings"],
+        "preview": report["preview"],
     }
 
 

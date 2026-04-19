@@ -4,12 +4,17 @@ from __future__ import annotations
 
 import math
 import json
+import os
 import shutil
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+os.environ.setdefault("MPLCONFIGDIR", "/tmp/matplotlib")
+import matplotlib
+
+matplotlib.use("Agg", force=True)
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd

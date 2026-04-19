@@ -9,7 +9,9 @@ const STORAGE_KEYS = {
   csv: "ise547_dataset_csv",
   name: "ise547_dataset_name",
   sampling: "ise547_dataset_sampling",
-  loading: "ise547_dataset_loading"
+  loading: "ise547_dataset_loading",
+  edaReport: "ise547_eda_report",
+  edaDataset: "ise547_eda_dataset"
 };
 
 const API_BASE_URL = (window.APP_CONFIG?.API_BASE_URL || "").replace(/\/$/, "");
@@ -81,6 +83,8 @@ function setLoadingInfo(info) {
 function saveDataset(fileName, csvText, samplingInfo = null) {
   localStorage.setItem(STORAGE_KEYS.csv, csvText);
   localStorage.setItem(STORAGE_KEYS.name, fileName);
+  sessionStorage.removeItem(STORAGE_KEYS.edaReport);
+  sessionStorage.removeItem(STORAGE_KEYS.edaDataset);
   if (samplingInfo) {
     localStorage.setItem(STORAGE_KEYS.sampling, JSON.stringify(samplingInfo));
   } else {
@@ -283,6 +287,7 @@ async function getSummary(rows) {
 function renderTopbar(page) {
   const nav = [
     ["index.html", "Overview"],
+    ["eda.html", "EDA Agent"],
     ["analyst.html", "Analyst Demo"],
     ["evaluation.html", "Evaluation"],
     ["presentation.html", "Presentation"]
@@ -377,6 +382,8 @@ function renderUploadCard(summary) {
     localStorage.removeItem(STORAGE_KEYS.csv);
     localStorage.removeItem(STORAGE_KEYS.name);
     localStorage.removeItem(STORAGE_KEYS.sampling);
+    sessionStorage.removeItem(STORAGE_KEYS.edaReport);
+    sessionStorage.removeItem(STORAGE_KEYS.edaDataset);
     window.location.reload();
   });
 }
@@ -412,6 +419,27 @@ function renderBarList(items, formatter = (v) => v.toFixed(2)) {
       <div class="bar-head"><span>${item.key}</span><strong>${formatter(item.value)}</strong></div>
       <div class="bar-track"><div class="bar-fill" style="width:${Math.max(4, item.value * 100)}%"></div></div>
     </div>`).join("")}</div>`;
+}
+
+function safePercent(value) {
+  return value !== null && value !== undefined && !Number.isNaN(Number(value))
+    ? `${(Number(value) * 100).toFixed(1)}%`
+    : "N/A";
+}
+
+function getStoredEdaReport() {
+  try {
+    const report = JSON.parse(sessionStorage.getItem(STORAGE_KEYS.edaReport) || "null");
+    const dataset = sessionStorage.getItem(STORAGE_KEYS.edaDataset);
+    return dataset === getDatasetName() ? report : null;
+  } catch (_) {
+    return null;
+  }
+}
+
+function setStoredEdaReport(report) {
+  sessionStorage.setItem(STORAGE_KEYS.edaReport, JSON.stringify(report));
+  sessionStorage.setItem(STORAGE_KEYS.edaDataset, getDatasetName());
 }
 
 function retrieveContext(rows, question, topK = 5) {
@@ -495,6 +523,201 @@ async function renderOverviewPage(rows) {
       ${tableFromRows(summary.preview || rows.slice(0, 12))}
     </div>
   `;
+}
+
+/* ── EDA page ── */
+function buildLocalEdaFallback(rows) {
+  const summary = summarizeRows(rows);
+  const missingSummary = rows.length
+    ? Object.keys(rows[0]).map((column) => {
+        const missing = rows.filter((row) => row[column] === null || row[column] === undefined || row[column] === "").length;
+        return { column, missing_pct: Number(((missing / rows.length) * 100).toFixed(2)) };
+      }).sort((a, b) => b.missing_pct - a.missing_pct).slice(0, 12)
+    : [];
+
+  const warnings = [];
+  if (!summary.schema.target) warnings.push("No clean target or outcome column was detected.");
+  if (missingSummary.some((row) => row.missing_pct > 20)) warnings.push("Some columns have more than 20% missing values.");
+  if (!warnings.length) warnings.push("No major structural data quality issues were detected.");
+
+  return {
+    dataset_name: getDatasetName(),
+    profile: {
+      source_format: "tabular",
+      analysis_grain: "rows",
+      raw_rows: summary.rows,
+      analysis_rows: summary.rows,
+      columns: summary.columns,
+      schema: summary.schema,
+      target_rate: summary.targetRate,
+      top_time: summary.topTime,
+      top_customer: summary.topCustomer,
+      top_channel: summary.topChannel,
+      top_product_dimension: "Unavailable",
+      numeric_columns: rows.length ? Object.keys(rows[0]).filter((column) => isNumericColumn(rows, column)).slice(0, 10) : []
+    },
+    quality_checks: {
+      duplicate_rows: 0,
+      missing_summary: missingSummary,
+      null_heavy_columns: missingSummary.filter((row) => row.missing_pct > 20),
+      constant_columns: [],
+      high_cardinality_columns: [],
+      numeric_outliers: [],
+      warnings
+    },
+    chart_manifest: [],
+    suggested_questions: [
+      summary.schema.customer ? `Which ${summary.schema.customer} values should we prioritize based on performance?` : null,
+      summary.schema.channel ? `Which ${summary.schema.channel} groups appear strongest for future investment?` : null,
+      summary.schema.time ? `How does performance change across ${summary.schema.time}?` : null,
+      summary.schema.engagement ? `How does ${summary.schema.engagement} relate to purchase or conversion behavior?` : null
+    ].filter(Boolean),
+    key_findings: [
+      summary.targetRate !== null ? `Detected outcome rate is ${(summary.targetRate * 100).toFixed(1)}%.` : null,
+      summary.topCustomer !== "Unavailable" ? `Strongest detected customer grouping is ${summary.topCustomer}.` : null,
+      summary.topChannel !== "Unavailable" ? `Strongest detected channel grouping is ${summary.topChannel}.` : null,
+      summary.topTime !== "Unavailable" ? `Best-performing time grouping is ${summary.topTime}.` : null
+    ].filter(Boolean),
+    handoff_summary: {
+      dataset_type: "tabular",
+      analysis_grain: "rows",
+      target_column: summary.schema.target,
+      time_column: summary.schema.time,
+      customer_dimensions: [summary.schema.customer].filter(Boolean),
+      channel_dimensions: [summary.schema.channel].filter(Boolean),
+      engagement_metric: summary.schema.engagement,
+      friction_metric: summary.schema.friction,
+      quality_warnings: warnings,
+      top_patterns: [],
+      recommended_questions: []
+    },
+    retrieval_chunks: [],
+    preview: rows.slice(0, 12)
+  };
+}
+
+function renderSchemaRows(schema = {}) {
+  return ["target", "time", "customer", "channel", "product", "engagement", "friction"].map((key) => `
+    <div class="schema-row">
+      <span>${key.replace(/_/g, " ")}</span>
+      <strong>${schema[key] || "Not detected"}</strong>
+    </div>
+  `).join("");
+}
+
+function renderEdaReport(report) {
+  const profile = report.profile || {};
+  const quality = report.quality_checks || {};
+  const charts = report.chart_manifest || [];
+  const chartHtml = charts.length
+    ? `<div class="chart-grid">${charts.map((chart) => `
+        <div class="card chart-card">
+          <div class="section-title">${chart.title}</div>
+          <div class="section-subtitle">${chart.caption}</div>
+          <img src="${API_BASE_URL}${chart.chart_url}" alt="${chart.title}" loading="lazy" />
+        </div>
+      `).join("")}</div>`
+    : `<div class="card"><div class="section-title">EDA visuals</div><p class="muted">Backend charts are not available in fallback mode. Connect the Fly API to generate chart images.</p></div>`;
+
+  return `
+    <div class="grid-4 fade-in">
+      ${metricCard("Source Format", profile.source_format || "tabular", "Detected input structure")}
+      ${metricCard("Analysis Grain", profile.analysis_grain || "rows", "Normalized level")}
+      ${metricCard("Analysis Rows", Number(profile.analysis_rows || 0).toLocaleString(), "Rows used for profiling")}
+      ${metricCard("Outcome Rate", safePercent(profile.target_rate), "Detected conversion/purchase rate")}
+    </div>
+
+    <div class="grid-main" style="margin-top:18px;">
+      <div class="card fade-in">
+        <div class="section-title">Detected ecommerce schema</div>
+        <div class="section-subtitle">The EDA agent maps arbitrary ecommerce columns into reusable business roles.</div>
+        <div class="schema-list">${renderSchemaRows(profile.schema || {})}</div>
+      </div>
+      <div class="card fade-in" style="animation-delay:0.06s">
+        <div class="section-title">Quality checks</div>
+        <ul>${(quality.warnings || []).map((warning) => `<li>${warning}</li>`).join("")}</ul>
+        <div class="toolbar" style="margin-top:14px;">
+          <span class="tag">Duplicates: ${Number(quality.duplicate_rows || 0).toLocaleString()}</span>
+          <span class="tag">High-missing fields: ${(quality.null_heavy_columns || []).length}</span>
+          <span class="tag">Outlier fields: ${(quality.numeric_outliers || []).length}</span>
+        </div>
+      </div>
+    </div>
+
+    <div style="margin-top:18px;">${chartHtml}</div>
+
+    <div class="grid-2" style="margin-top:18px;">
+      <div class="card fade-in">
+        <div class="section-title">Key findings</div>
+        <ul>${(report.key_findings || []).map((finding) => `<li>${finding}</li>`).join("") || "<li>No findings generated yet.</li>"}</ul>
+      </div>
+      <div class="card fade-in" style="animation-delay:0.06s">
+        <div class="section-title">Suggested business questions</div>
+        <ul>${(report.suggested_questions || []).map((question) => `<li>${question}</li>`).join("") || "<li>No suggested questions generated yet.</li>"}</ul>
+      </div>
+    </div>
+
+    <div class="grid-2" style="margin-top:18px;">
+      <div class="card fade-in">
+        <div class="section-title">Handoff summary for Analyst Agent</div>
+        <div class="json-box">${JSON.stringify(report.handoff_summary || {}, null, 2)}</div>
+      </div>
+      <div class="card fade-in" style="animation-delay:0.06s">
+        <div class="section-title">Missingness details</div>
+        ${tableFromRows(quality.missing_summary || [])}
+      </div>
+    </div>
+  `;
+}
+
+async function renderEdaPage(rows) {
+  const host = document.getElementById("edaPage");
+  const cached = getStoredEdaReport();
+  host.innerHTML = `
+    <div class="card fade-in">
+      <div class="section-title">EDA Agent</div>
+      <div class="section-subtitle">Run deterministic profiling before analyst reasoning: dataset profile, quality checks, visual exploration, suggested questions, and handoff context.</div>
+      <div class="toolbar">
+        <button id="runEdaButton" type="button">Run EDA Agent</button>
+        <a class="button-link secondary" href="./index.html">Change dataset</a>
+        <span class="tag">Active dataset: ${getDatasetName()}</span>
+      </div>
+    </div>
+    <div id="edaResults" style="margin-top:18px;"></div>
+  `;
+
+  const results = document.getElementById("edaResults");
+  if (cached) {
+    results.innerHTML = renderEdaReport(cached);
+  }
+
+  async function run() {
+    const btn = document.getElementById("runEdaButton");
+    btn.disabled = true;
+    btn.innerHTML = `<span class="spinner"></span> Profiling…`;
+    results.innerHTML = `<div class="loading-inline"><span class="inline-spinner"></span><span>Profiling the dataset and generating EDA visuals.</span></div>`;
+
+    let report;
+    if (hasBackend() && getStoredCsv()) {
+      try {
+        report = await fetchApi("/api/eda", {
+          method: "POST",
+          body: makeFormData()
+        });
+      } catch (error) {
+        console.warn("Backend EDA call failed, falling back to local summary.", error);
+      }
+    }
+
+    if (!report) report = buildLocalEdaFallback(rows);
+    setStoredEdaReport(report);
+    results.innerHTML = renderEdaReport(report);
+    btn.disabled = false;
+    btn.innerHTML = "Run EDA Agent";
+  }
+
+  document.getElementById("runEdaButton").addEventListener("click", run);
+  if (!cached) await run();
 }
 
 /* ── Analyst page ── */
@@ -884,6 +1107,7 @@ async function init() {
   }
   const rows = await getDataset();
   if (page === "index.html") await renderOverviewPage(rows);
+  else if (page === "eda.html") await renderEdaPage(rows);
   else if (page === "analyst.html") await renderAnalystPage(rows);
   else if (page === "evaluation.html") await renderEvaluationPage();
   else if (page === "presentation.html") await renderPresentationPage(rows);

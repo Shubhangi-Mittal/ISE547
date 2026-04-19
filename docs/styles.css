@@ -758,6 +758,42 @@ select:focus {
   background: white;
 }
 
+.chart-card {
+  display: grid;
+  gap: 8px;
+}
+
+.schema-list {
+  display: grid;
+  gap: 9px;
+  margin-top: 14px;
+}
+
+.schema-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  align-items: center;
+  border-radius: 14px;
+  padding: 11px 13px;
+  background: rgba(30, 96, 117, 0.045);
+  border: 1px solid rgba(30, 96, 117, 0.08);
+}
+
+.schema-row span {
+  color: var(--muted);
+  font-size: 0.82rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 700;
+}
+
+.schema-row strong {
+  color: var(--ink);
+  text-align: right;
+  font-size: 0.92rem;
+}
+
 /* ── Responsive ── */
 @media (max-width: 1000px) {
   .grid-4,
