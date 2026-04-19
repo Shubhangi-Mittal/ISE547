@@ -506,6 +506,10 @@ async function renderOverviewPage(rows) {
           <li>Channel grouping: <strong>${summary.schema?.channel || "Not detected"}</strong></li>
           <li>Time grouping: <strong>${summary.schema?.time || "Not detected"}</strong></li>
         </ul>
+        <div class="toolbar" style="margin-top:16px;">
+          <a class="button-link" href="./eda.html">Open EDA Agent</a>
+          <a class="button-link secondary" href="./analyst.html">Ask Analyst Agent</a>
+        </div>
       </div>
       <div class="card fade-in" style="animation-delay:0.07s">
         <div class="section-title">Quick summary</div>
